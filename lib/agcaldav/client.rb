@@ -63,6 +63,30 @@ module AgCalDAV
       http
     end
 
+    def get_ctag
+      result = ""
+
+      __create_http.start {|http|
+        
+        req = Net::HTTP::PropFind.new(@url, initheader = {'Content-Type'=>'text/xml'} )
+        req.basic_auth @user, @password
+        req.body = '<?xml version="1.0" encoding="UTF-8"?>
+                    <A:propfind xmlns:A="DAV:">
+                      <A:prop>
+                        <C:getctag xmlns:C="http://calendarserver.org/ns/"/>
+                        <A:sync-token/>
+                      </A:prop>
+                    </A:propfind>
+                    '
+
+        res = http.request(req)
+
+        debug_log(req, res)
+        xml = REXML::Document.new(res.body)
+        REXML::XPath.match( xml, '//CS:getctag/text()' ).first.to_s
+      } 
+    end
+
     def find_events data
       result = ""
       events = []
@@ -71,11 +95,12 @@ module AgCalDAV
       	
         req = Net::HTTP::Report.new(@url, initheader = {'Content-Type'=>'application/xml'} )
         
-		if not @authtype == 'digest'
-			req.basic_auth @user, @password
-		else
-			req.add_field 'Authorization', digestauth('REPORT')
-		end
+    		if not @authtype == 'digest'
+    			req.basic_auth @user, @password
+    		else
+    			req.add_field 'Authorization', digestauth('REPORT')
+    		end
+
 		    if data[:start].is_a? Integer
           req.body = AgCalDAV::Request::ReportVEVENT.new(Time.at(data[:start]).utc.strftime("%Y%m%dT%H%M%S"), 
                                                         Time.at(data[:end]).utc.strftime("%Y%m%dT%H%M%S") ).to_xml
