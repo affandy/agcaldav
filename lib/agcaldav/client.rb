@@ -11,6 +11,11 @@ module AgCalDAV
       @format ||= Format::Debug.new
     end
 
+    def debug_log(req, res)
+      puts "REQUEST:\nMETHOD: #{req.inspect}\nHEADER: #{req.to_hash}\nBODY: #{req.body}"
+      puts "RESPONSE:\nMETHOD: #{res.inspect}\nHEADER: #{res.to_hash}\nBODY: #{res.body}"
+    end
+
     def initialize( data )
       unless data[:proxy_uri].nil?
         proxy_uri   = URI(data[:proxy_uri])
@@ -77,8 +82,9 @@ module AgCalDAV
         else
           req.body = AgCalDAV::Request::ReportVEVENT.new(DateTime.parse(data[:start]).utc.strftime("%Y%m%dT%H%M%S"), 
                                                         DateTime.parse(data[:end]).utc.strftime("%Y%m%dT%H%M%S") ).to_xml
-        end
+        end        
         res = http.request(req)
+        debug_log(req, res)
       } 
         errorhandling res
         result = ""
@@ -143,41 +149,38 @@ module AgCalDAV
 
     def create_event event
       c = Calendar.new
-      c.events = []
+
+      event_start = DateTime.parse(event[:start])
+      event_end = DateTime.parse(event[:end])
+      tzid = "Europe/Amsterdam"
       uuid = UUID.new.generate
-      raise DuplicateError if entry_with_uuid_exists?(uuid)
-      c.event do
-        uid           uuid 
-        dtstart       DateTime.parse(event[:start])
-        dtend         DateTime.parse(event[:end])
-        categories    event[:categories]# Array
-        contacts      event[:contacts] # Array
-        attendees     event[:attendees]# Array
-        duration      event[:duration]
-        summary       event[:title]
-        description   event[:description]
-        klass         event[:accessibility] #PUBLIC, PRIVATE, CONFIDENTIAL
-        location      event[:location]
-        geo_location  event[:geo_location]
-        status        event[:status]
-        url           event[:url]
+
+      # raise DuplicateError if entry_with_uuid_exists?(uuid)
+
+      c.event do |e|
+        e.uid          = uuid 
+        e.dtstart      = Icalendar::Values::DateTime.new event_start, 'tzid' => tzid
+        e.dtend        = Icalendar::Values::DateTime.new event_end, 'tzid' => tzid
+        e.summary      = event[:title]
+        e.description  = event[:description]
       end
-      cstring = c.to_ical
+
       res = nil
       http = Net::HTTP.new(@host, @port)
       __create_http.start { |http|
-        req = Net::HTTP::Put.new("#{@url}/#{uuid}.ics")
+        req = Net::HTTP::Put.new("#{@url}/#{uuid}.ics", {'If-None-Match' => '*'})
         req['Content-Type'] = 'text/calendar'
         if not @authtype == 'digest'
         	req.basic_auth @user, @password
         else
         	req.add_field 'Authorization', digestauth('PUT')
         end
-        req.body = cstring
+        req.body = c.to_ical
         res = http.request( req )
-      }
+        debug_log(req, res)
+      }      
       errorhandling res
-      find_event uuid
+      # find_event uuid
     end
 
     def update_event event
