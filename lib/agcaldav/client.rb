@@ -178,7 +178,7 @@ module AgCalDAV
       event_start = DateTime.parse(event[:start])
       event_end = DateTime.parse(event[:end])
       tzid = "Europe/Amsterdam"
-      uuid = UUID.new.generate
+      uuid = event[:uid] || UUID.new.generate
 
       # raise DuplicateError if entry_with_uuid_exists?(uuid)
 
